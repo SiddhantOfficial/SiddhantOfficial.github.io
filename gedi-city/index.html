@@ -234,6 +234,7 @@ function update(dt){
   if(keys[' ']) hb=true;
   if(joy.on){ th=-joy.y; st=joy.x; }
   if(brakeBtn) hb=true;
+  if(demo){ const di=demoInput(); th=di.th; st=di.st; }
 
   // --- car physics
   const spd=Math.abs(car.v);
@@ -448,6 +449,20 @@ function drawPillar(x,y,col,label){
 function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
   ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 
+/* ---------- Demo autopilot (screenshot/testing: #demo) ---------- */
+const demo = location.hash.startsWith('#demo');
+const route=[[30.5,22.5],[22,22.5],[14,22.5],[14,30.5],[14,38.5],[30.5,38.5],[46,38.5],[48,47]];
+let wpIdx=0;
+function demoInput(){
+  if(wpIdx>=route.length) return {th:0,st:0};
+  const [wx,wy]=route[wpIdx], tx=wx*T, ty=wy*T;
+  const d=Math.hypot(tx-car.x,ty-car.y);
+  if(d<T*1.2){ wpIdx++; return {th:0,st:0}; }
+  const ta=Math.atan2(ty-car.y,tx-car.x);
+  let da=ta-car.a; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
+  return {th: Math.abs(da)>1.2?0.25:1, st: Math.max(-1,Math.min(1,da*2))};
+}
+
 /* ---------- Main loop ---------- */
 let last=performance.now(), started=false;
 function loop(now){
@@ -457,6 +472,7 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+if(demo){ document.getElementById('splash').style.display='none'; started=true; }
 document.getElementById('startBtn').addEventListener('click',()=>{
   document.getElementById('splash').style.display='none';
   started=true; initAudio();
