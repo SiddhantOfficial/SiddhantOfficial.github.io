@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0d1420">
+<title>Gedi City: Raipur | गेड़ी सिटी रायपुर</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0d1420; touch-action:none;
+    font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif; -webkit-user-select:none; user-select:none; }
+  #game { display:block; position:absolute; inset:0; }
+  .hud { position:absolute; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.8); pointer-events:none; z-index:5; }
+  #stars { top:10px; right:14px; font-size:26px; letter-spacing:2px; }
+  #dist { top:10px; left:14px; font-size:14px; opacity:.95; }
+  #speed { bottom:16px; right:16px; font-size:15px; text-align:right; }
+  #speed b { font-size:30px; }
+  #toast { top:16%; left:50%; transform:translateX(-50%); font-size:22px; font-weight:700; text-align:center; opacity:0; transition:opacity .3s; white-space:nowrap; }
+  #splash { position:absolute; inset:0; z-index:20; background:radial-gradient(ellipse at 50% 30%, #1c2f4a 0%, #0d1420 70%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; text-align:center; padding:20px; }
+  #splash h1 { font-size:clamp(38px,9vw,72px); font-weight:900; letter-spacing:2px;
+    background:linear-gradient(180deg,#ffd54a,#ff7b2e); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  #splash h2 { font-size:clamp(16px,4vw,24px); color:#9fd0ff; margin:6px 0 24px; font-weight:600; }
+  #splash .card { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15); border-radius:14px; padding:16px 22px; font-size:14px; line-height:1.9; max-width:420px; }
+  #splash .go { margin-top:26px; background:linear-gradient(180deg,#ffd54a,#ff8a2e); color:#231303; font-weight:800; font-size:19px;
+    padding:14px 44px; border:none; border-radius:999px; cursor:pointer; box-shadow:0 6px 24px rgba(255,150,40,.4); }
+  #splash .go:active { transform:scale(.96); }
+  #busted { position:absolute; inset:0; z-index:18; display:none; align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(10,0,0,.55); color:#ff5252; font-size:clamp(44px,12vw,90px); font-weight:900; letter-spacing:6px; }
+  #busted small { color:#fff; font-size:16px; letter-spacing:1px; margin-top:12px; font-weight:400; }
+  .stick { position:absolute; bottom:26px; left:22px; width:128px; height:128px; border-radius:50%; z-index:8;
+    background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.22); display:none; }
+  .knob { position:absolute; left:50%; top:50%; width:54px; height:54px; border-radius:50%;
+    background:rgba(255,255,255,.35); transform:translate(-50%,-50%); }
+  #brakeBtn { position:absolute; bottom:44px; right:24px; width:86px; height:86px; border-radius:50%; z-index:8; display:none;
+    background:rgba(255,60,60,.25); border:2px solid rgba(255,90,90,.6); color:#fff; font-weight:800; font-size:14px; }
+  @media (pointer:coarse) { .stick, #brakeBtn { display:block; } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div class="hud" id="stars"></div>
+<div class="hud" id="dist"></div>
+<div class="hud" id="speed"></div>
+<div class="hud" id="toast"></div>
+<div class="stick" id="stick"><div class="knob" id="knob"></div></div>
+<button id="brakeBtn">BRAKE</button>
+<div id="busted"><span>पकड़ा गया!</span><small>BUSTED · फिर से गेड़ी मारो</small></div>
+<div id="splash">
+  <h1>GEDI CITY</h1>
+  <h2>गेड़ी सिटी · रायपुर · An open-city driving game</h2>
+  <div class="card">
+    <b>Desktop:</b> W A S D / Arrow keys · Space = handbrake · M = sound<br>
+    <b>Phone:</b> Left joystick to drive · red button = brake<br><br>
+    तेलिबंधा तालाब की Marine Drive पर गेड़ी मारो, Jaistambh Chowk घुमाओ —
+    पर ट्रैफ़िक मत उड़ाओ, वरना पुलिस पीछे पड़ जाएगी! ⭐
+  </div>
+  <button class="go" id="startBtn">गेड़ी शुरू करो 🚗</button>
+</div>
+<script>
+"use strict";
+/* ================= GEDI CITY: RAIPUR =================
+   Top-down open-city driving game. All art procedural. */
+const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+let DPR = Math.min(window.devicePixelRatio||1, 2);
+let VW=0, VH=0;
+function resize(){ VW=innerWidth; VH=innerHeight; cv.width=VW*DPR; cv.height=VH*DPR;
+  cv.style.width=VW+'px'; cv.style.height=VH+'px'; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize', resize); resize();
+
+/* ---------- City map (Raipur-inspired) ---------- */
+const T=48, MW=64, MH=64, PW=MW*T, PH=MH*T;
+const ROAD=1, WATER=2, PLAZA=3, PARK=4, WALK=5, BLDG=0;
+const map = new Uint8Array(MW*MH); // 0 = building block
+const at=(x,y)=> (x<0||y<0||x>=MW||y>=MH)?BLDG:map[y*MW+x];
+function setT(x,y,v){ if(x>=0&&y>=0&&x<MW&&y<MH) map[y*MW+x]=v; }
+// road grid
+const vRoads=[6,14,22,30,38,46,54], hRoads=[6,14,22,30,38,46,54];
+for(const x of vRoads){ for(let y=2;y<MH-2;y++){ setT(x,y,ROAD); if(x===30) setT(x+1,y,ROAD); } }
+for(const y of hRoads){ for(let x=2;x<MW-2;x++){ setT(x,y,ROAD); if(y===38) setT(x,y+1,ROAD); } }
+// Telibandha lake + Marine Drive ring
+const LC={x:48,y:47,rx:8.5,ry:6};
+for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
+  const d=((x-LC.x)**2)/(LC.rx**2)+((y-LC.y)**2)/(LC.ry**2);
+  if(d<1) setT(x,y,WATER); else if(d<1.5) setT(x,y,ROAD); // Marine Drive
+}
+// Jaistambh Chowk roundabout (centre-west landmark)
+const JC={x:22,y:22};
+for(let y=JC.y-5;y<=JC.y+5;y++)for(let x=JC.x-5;x<=JC.x+5;x++){
+  const d=Math.hypot(x-JC.x,y-JC.y);
+  if(d<=2.4) setT(x,y,PLAZA); else if(d<=3.6) setT(x,y,ROAD);
+}
+setT(JC.x,JC.y,BLDG); // the pillar itself
+// Ghadi Chowk square (clock tower)
+const GC={x:14,y:30};
+for(let y=GC.y-4;y<=GC.y+4;y++)for(let x=GC.x-4;x<=GC.x+4;x++){
+  const d=Math.hypot(x-GC.x,y-GC.y);
+  if(d<=2.2) setT(x,y,PLAZA); else if(d<=3.4) setT(x,y,ROAD);
+}
+setT(GC.x,GC.y,BLDG);
+// Parks
+function park(x0,y0,x1,y1){ for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++) if(map[y*MW+x]===BLDG) setT(x,y,PARK); }
+park(8,8,12,12); park(40,8,44,12); park(56,24,61,28); park(8,48,13,53); park(24,42,29,45);
+// Sidewalks: building tiles next to road/plaza become walk
+for(let y=1;y<MH-1;y++)for(let x=1;x<MW-1;x++){
+  if(map[y*MW+x]!==BLDG) continue;
+  for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    const n=at(x+dx,y+dy);
+    if(n===ROAD||n===PLAZA){ setT(x,y,WALK); break; }
+  }
+}
+// keep landmark pillars solid building
+map[JC.y*MW+JC.x]=BLDG; map[GC.y*MW+GC.x]=BLDG;
+
+/* ---------- Building clusters, colours, Hindi signs ---------- */
+const bId = new Int32Array(MW*MH).fill(-1);
+const bInfo = [];
+const palette=[['#c98a5a','#a96f43'],['#d4a24e','#b8863a'],['#b8655f','#9c4f4a'],['#7fa6c9','#6488ab'],
+  ['#9db07a','#7f9560'],['#c97e9b','#a96484'],['#8d8dc9','#7272ab'],['#d1763f','#b25f30']];
+const signNames=['चाय की दुकान','मेडिकल स्टोर','मोबाइल रिचार्ज','होटल राजधानी','पान भंडार','सिनेमा हॉल','साड़ी सदन',
+  'मिष्ठान भंडार','किराना स्टोर','बाइक रिपेयर','दूध डेयरी','ठेला चाट','बुक डिपो','ज्वेलर्स','साइबर कैफ़े','धाबा',
+  'टेंट हाउस','फ़र्नीचर','इलेक्ट्रॉनिक्स','जूता महल'];
+let bid=0;
+for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
+  if(map[y*MW+x]===BLDG && bId[y*MW+x]<0){
+    // flood fill
+    const stack=[[x,y]], cells=[]; bId[y*MW+x]=bid;
+    while(stack.length){ const [cx,cy]=stack.pop(); cells.push([cx,cy]);
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=cx+dx, ny=cy+dy;
+        if(nx>=0&&ny>=0&&nx<MW&&ny<MH&&map[ny*MW+nx]===BLDG&&bId[ny*MW+nx]<0){ bId[ny*MW+nx]=bid; stack.push([nx,ny]); }
+      } }
+    const p=palette[Math.floor(Math.random()*palette.length)];
+    let sx=0,sy=0; for(const c of cells){ sx+=c[0]; sy+=c[1]; }
+    bInfo.push({cells, col:p[0], dark:p[1], cx:sx/cells.length*T, cy:sy/cells.length*T,
+      name: cells.length>=4 ? signNames[Math.floor(Math.random()*signNames.length)] : null});
+    bid++;
+  }
+}
+function isLandmark(x,y){ return (x===JC.x&&y===JC.y)||(x===GC.x&&y===GC.y); }
+
+/* ---------- Player car ---------- */
+const car = { x:30.5*T, y:26*T, a:-Math.PI/2, v:0, w:22, l:40 };
+const keys = {};
+let joy = {x:0,y:0,on:false}, brakeBtn=false;
+const MAXV=520, ACCEL=420, REV=200;
+
+/* ---------- Traffic (auto-rickshaws, cars, bus) ---------- */
+const traffic=[];
+function randomRoadTile(){ for(let i=0;i<400;i++){ const x=2+Math.floor(Math.random()*(MW-4)), y=2+Math.floor(Math.random()*(MH-4));
+  if(map[y*MW+x]===ROAD && Math.hypot(x*T-car.x,y*T-car.y)>400) return {x,y}; } return {x:6,y:6}; }
+const tTypes=[{n:'auto',w:18,l:26,v:150,c1:'#1f9d4d',c2:'#ffd21f'},{n:'car',w:20,l:38,v:210,c1:'#c9d4e0',c2:'#39424e'},
+  {n:'car',w:20,l:38,v:200,c1:'#d9604f',c2:'#5e2420'},{n:'car',w:20,l:38,v:220,c1:'#4f7ed9',c2:'#20305e'},
+  {n:'bus',w:24,l:56,v:140,c1:'#e08b2d',c2:'#7a4a12'}];
+function spawnTraffic(){ const t=tTypes[Math.floor(Math.random()*tTypes.length)], p=randomRoadTile();
+  const dir=[[1,0],[-1,0],[0,1],[0,-1]][Math.floor(Math.random()*4)];
+  traffic.push({x:p.x*T+T/2,y:p.y*T+T/2,dx:dir[0],dy:dir[1],...t,dead:0,honk:0}); }
+for(let i=0;i<16;i++) spawnTraffic();
+
+/* ---------- Pedestrians ---------- */
+const peds=[];
+function spawnPed(){ for(let i=0;i<200;i++){ const x=2+Math.floor(Math.random()*(MW-4)), y=2+Math.floor(Math.random()*(MH-4));
+  const m=map[y*MW+x];
+  if((m===WALK||m===PLAZA) && Math.hypot(x*T-car.x,y*T-car.y)>300){
+    peds.push({x:x*T+T/2,y:y*T+T/2,a:Math.random()*6.28,t:Math.random()*3,c:'hsl('+Math.floor(Math.random()*360)+',60%,60%)'}); return; } } }
+for(let i=0;i<24;i++) spawnPed();
+
+/* ---------- Police & wanted ---------- */
+const cops=[];
+let stars=0, heat=0, lastCrime=-99, bustedT=0, busted=false, gameT=0, dist=0, topSpeed=0;
+function addHeat(h){ heat=Math.min(6,heat+h); lastCrime=gameT; const ns=Math.min(5,Math.floor(heat)); if(ns>stars){ stars=ns; toast(stars>=3?'पुलिस एलर्ट! भागो!':'पुलिस आ गई!'); } }
+function spawnCop(){ const p=randomRoadTile();
+  cops.push({x:p.x*T+T/2,y:p.y*T+T/2,a:0,v:0,stuck:0,px:0,py:0,siren:Math.random()*6}); }
+
+/* ---------- Toasts ---------- */
+const toastEl=document.getElementById('toast'); let toastTimer=null;
+function toast(msg){ toastEl.textContent=msg; toastEl.style.opacity=1;
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.style.opacity=0,2200); }
+
+/* ---------- Audio (tiny, procedural) ---------- */
+let AC=null, engOsc=null, engGain=null, muted=false;
+function initAudio(){ if(AC) return; try{ AC=new (window.AudioContext||window.webkitAudioContext)();
+  engOsc=AC.createOscillator(); engGain=AC.createGain(); engOsc.type='sawtooth';
+  engOsc.frequency.value=50; engGain.gain.value=0; engOsc.connect(engGain); engGain.connect(AC.destination); engOsc.start();
+}catch(e){} }
+function thud(){ if(!AC||muted) return; const o=AC.createOscillator(), g=AC.createGain();
+  o.type='square'; o.frequency.value=90; g.gain.setValueAtTime(.15,AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+.18); o.connect(g); g.connect(AC.destination);
+  o.start(); o.stop(AC.currentTime+.2); }
+
+/* ---------- Input ---------- */
+addEventListener('keydown',e=>{ keys[e.key.toLowerCase()]=true;
+  if(e.key==='m'||e.key==='M') muted=!muted;
+  if([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault(); });
+addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
+// touch joystick
+const stickEl=document.getElementById('stick'), knob=document.getElementById('knob');
+let stickId=null;
+function stickPos(t){ const r=stickEl.getBoundingClientRect();
+  let dx=t.clientX-(r.left+r.width/2), dy=t.clientY-(r.top+r.height/2);
+  const m=Math.hypot(dx,dy), max=r.width/2;
+  if(m>max){ dx=dx/m*max; dy=dy/m*max; }
+  knob.style.transform='translate(calc(-50% + '+dx+'px), calc(-50% + '+dy+'px))';
+  joy.x=dx/max; joy.y=dy/max; joy.on=true; }
+stickEl.addEventListener('touchstart',e=>{ e.preventDefault(); stickId=e.changedTouches[0].identifier; stickPos(e.changedTouches[0]); },{passive:false});
+addEventListener('touchmove',e=>{ for(const t of e.changedTouches) if(t.identifier===stickId) stickPos(t); },{passive:false});
+addEventListener('touchend',e=>{ for(const t of e.changedTouches) if(t.identifier===stickId){ stickId=null; joy.x=joy.y=0; joy.on=false; knob.style.transform='translate(-50%,-50%)'; } });
+const bBtn=document.getElementById('brakeBtn');
+bBtn.addEventListener('touchstart',e=>{e.preventDefault(); brakeBtn=true;},{passive:false});
+bBtn.addEventListener('touchend',()=>brakeBtn=false);
+
+/* ---------- Collision helpers ---------- */
+function tileSolid(px,py){ const m=at(Math.floor(px/T),Math.floor(py/T)); return m===BLDG||m===WATER; }
+function carHitsSolid(x,y,a,w,l){
+  const c=Math.cos(a), s=Math.sin(a);
+  for(const [ox,oy] of [[l/2,0],[-l/2,0],[l/2,w/2],[l/2,-w/2],[-l/2,w/2],[-l/2,-w/2],[0,w/2],[0,-w/2]]){
+    const px=x+ox*c-oy*s, py=y+ox*s+oy*c;
+    if(tileSolid(px,py)) return true;
+  } return false; }
+
+/* ---------- Update ---------- */
+function update(dt){
+  gameT+=dt;
+  if(busted){ bustedT-=dt; if(bustedT<=0){ busted=false; document.getElementById('busted').style.display='none';
+    car.x=GC.x*T; car.y=(GC.y+3)*T; car.a=-Math.PI/2; car.v=0; stars=0; heat=0; cops.length=0; } return; }
+
+  // --- player input
+  let th=0, st=0, hb=false;
+  if(keys['w']||keys['arrowup']) th+=1;
+  if(keys['s']||keys['arrowdown']) th-=1;
+  if(keys['a']||keys['arrowleft']) st-=1;
+  if(keys['d']||keys['arrowright']) st+=1;
+  if(keys[' ']) hb=true;
+  if(joy.on){ th=-joy.y; st=joy.x; }
+  if(brakeBtn) hb=true;
+
+  // --- car physics
+  const spd=Math.abs(car.v);
+  const steerPow=Math.min(1,spd/160)*(hb?2.6:1.9);
+  car.a += st*steerPow*dt*(car.v<0?-1:1);
+  let acc=0;
+  if(th>0) acc=ACCEL*th;
+  else if(th<0) acc=(car.v>30?-ACCEL*1.4:REV*th);
+  car.v += acc*dt;
+  car.v -= car.v*(hb?3.2:0.9)*dt;
+  car.v=Math.max(-REV,Math.min(MAXV,car.v));
+  const nx=car.x+Math.cos(car.a)*car.v*dt, ny=car.y+Math.sin(car.a)*car.v*dt;
+  if(!carHitsSolid(nx,ny,car.a,car.w,car.l)){ dist+=Math.hypot(nx-car.x,ny-car.y); car.x=nx; car.y=ny; }
+  else { // slide: try axes
+    const nx2=car.x+Math.cos(car.a)*car.v*dt;
+    if(!carHitsSolid(nx2,car.y,car.a,car.w,car.l)){ car.x=nx2; car.v*=.55; }
+    else { const ny2=car.y+Math.sin(car.a)*car.v*dt;
+      if(!carHitsSolid(car.x,ny2,car.a,car.w,car.l)){ car.y=ny2; car.v*=.55; }
+      else { if(spd>180){ addHeat(.35); thud(); } car.v*=-.25; } }
+  }
+  // slow on park grass / walk
+  const under=at(Math.floor(car.x/T),Math.floor(car.y/T));
+  if(under===PARK||under===WALK) car.v-=car.v*1.6*dt;
+  topSpeed=Math.max(topSpeed,spd);
+
+  // --- traffic AI
+  for(const tv of traffic){
+    if(tv.dead>0){ tv.dead-=dt; continue; }
+    const sp=tv.v*(tv.honk>0?0.4:1);
+    const nxv=tv.x+tv.dx*sp*dt, nyv=tv.y+tv.dy*sp*dt;
+    const aheadM=at(Math.floor((tv.x+tv.dx*T)/T),Math.floor((tv.y+tv.dy*T)/T));
+    // player close? honk & stop-ish
+    const pd=Math.hypot(tv.x-car.x,tv.y-car.y);
+    tv.honk = pd<70 ? .5 : Math.max(0,tv.honk-dt);
+    const blocked = (aheadM!==ROAD && aheadM!==PLAZA) || pd<46;
+    if(!blocked){ tv.x=nxv; tv.y=nyv; }
+    if(blocked || Math.random()<0.006){
+      // pick a new direction that stays on road
+      const opts=[];
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const m=at(Math.floor((tv.x+dx*T)/T),Math.floor((tv.y+dy*T)/T));
+        if((m===ROAD||m===PLAZA) && !(dx===-tv.dx&&dy===-tv.dy)) opts.push([dx,dy]);
+      }
+      if(opts.length){ const [dx,dy]=opts[Math.floor(Math.random()*opts.length)]; tv.dx=dx; tv.dy=dy; }
+      else { tv.dx*=-1; tv.dy*=-1; }
+    }
+    // collision with player
+    if(pd<34 && spd>140){ tv.dead=6; addHeat(.8); thud();
+      setTimeout(()=>{ const i=traffic.indexOf(tv); if(i>=0) traffic.splice(i,1); spawnTraffic(); },6000); }
+  }
+
+  // --- peds
+  for(const p of peds){
+    const pd=Math.hypot(p.x-car.x,p.y-car.y);
+    if(pd<120){ p.a=Math.atan2(p.y-car.y,p.x-car.x); p.x+=Math.cos(p.a)*90*dt; p.y+=Math.sin(p.a)*90*dt; }
+    else { p.t-=dt; if(p.t<=0){ p.t=1+Math.random()*3; p.a=Math.random()*6.28; }
+      const nx2=p.x+Math.cos(p.a)*22*dt, ny2=p.y+Math.sin(p.a)*22*dt;
+      const m=at(Math.floor(nx2/T),Math.floor(ny2/T));
+      if(m===WALK||m===PLAZA||m===PARK){ p.x=nx2; p.y=ny2; } else p.a+=1.7; }
+    if(pd<26 && spd>120){ addHeat(1); thud(); toast('अरे! ध्यान से!'); 
+      const i=peds.indexOf(p); peds.splice(i,1); setTimeout(spawnPed,8000); break; }
+  }
+
+  // --- wanted decay & cops
+  if(gameT-lastCrime>9 && stars>0){ stars--; heat=stars; lastCrime=gameT; if(stars===0) toast('पुलिस पीछा छोड़ दिया ✓'); }
+  while(cops.length<Math.min(stars,4)) spawnCop();
+  while(cops.length>Math.min(stars,4)) cops.pop();
+  if(stars===0) cops.length=0;
+  let touchT=0;
+  for(const cp of cops){
+    const ta=Math.atan2(car.y-cp.y,car.x-cp.x);
+    let da=ta-cp.a; while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
+    cp.a+=Math.max(-3.2*dt,Math.min(3.2*dt,da));
+    const tv2=Math.min(560, 300+stars*40);
+    cp.v+=(tv2-cp.v)*1.5*dt;
+    const nx2=cp.x+Math.cos(cp.a)*cp.v*dt, ny2=cp.y+Math.sin(cp.a)*cp.v*dt;
+    if(!carHitsSolid(nx2,ny2,cp.a,20,38)){ cp.x=nx2; cp.y=ny2; cp.stuck=0; }
+    else { cp.stuck+=dt; cp.v*=.6; cp.a+=2.5*dt; if(cp.stuck>2){ const p=randomRoadTile(); cp.x=p.x*T+T/2; cp.y=p.y*T+T/2; cp.stuck=0; } }
+    cp.siren+=dt*10;
+    if(Math.hypot(cp.x-car.x,cp.y-car.y)<44) touchT+=dt;
+  }
+  if(touchT>0){ bustedT0+=touchT; } else bustedT0=Math.max(0,bustedT0-dt*2);
+  if(bustedT0>1.6){ busted=true; bustedT=2.6; bustedT0=0;
+    document.getElementById('busted').style.display='flex'; }
+
+  // --- engine sound
+  if(engOsc){ engOsc.frequency.value=50+spd*0.55; engGain.gain.value = muted?0:Math.min(.05, .012+spd*.00008); }
+}
+
+/* ---------- Render ---------- */
+const mini=document.createElement('canvas'); mini.width=MW; mini.height=MH;
+const mctx=mini.getContext('2d');
+{ // static minimap once
+  const mc={ [ROAD]:'#3d4653',[WATER]:'#2e6fb0',[PLAZA]:'#8a7f5a',[PARK]:'#3f7a3a',[WALK]:'#565e6b',[BLDG]:'#232a36' };
+  for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){ mctx.fillStyle=mc[map[y*MW+x]]; mctx.fillRect(x,y,1,1); }
+}
+let bustedT0=0;
+function draw(){
+  // camera
+  const cx=Math.max(VW/2,Math.min(PW-VW/2,car.x)), cy=Math.max(VH/2,Math.min(PH-VH/2,car.y));
+  const ox=cx-VW/2, oy=cy-VH/2;
+  // sky/ground base
+  ctx.fillStyle='#2b3442'; ctx.fillRect(0,0,VW,VH);
+  ctx.save(); ctx.translate(-ox,-oy);
+  const x0=Math.max(0,Math.floor(ox/T)-1), x1=Math.min(MW-1,Math.ceil((ox+VW)/T)+1);
+  const y0=Math.max(0,Math.floor(oy/T)-1), y1=Math.min(MH-1,Math.ceil((oy+VH)/T)+1);
+  // tiles
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+    const m=map[y*MW+x], px=x*T, py=y*T;
+    if(m===ROAD){ ctx.fillStyle='#454e5c'; ctx.fillRect(px,py,T,T);
+      // lane dashes
+      ctx.fillStyle='rgba(255,220,90,.5)';
+      if(vRoads.includes(x)||x===31) ctx.fillRect(px+T/2-1,py+((y%2)?6:26),2,16);
+      if(hRoads.includes(y)||y===39) ctx.fillRect(px+((x%2)?6:26),py+T/2-1,16,2);
+    }
+    else if(m===WATER){ ctx.fillStyle='#2f6fad'; ctx.fillRect(px,py,T,T);
+      ctx.fillStyle='rgba(255,255,255,.12)';
+      ctx.fillRect(px+((x*7+y*13)%30),py+((x*11+y*5)%30),14,3); }
+    else if(m===PLAZA){ ctx.fillStyle='#a89a6e'; ctx.fillRect(px,py,T,T); }
+    else if(m===PARK){ ctx.fillStyle='#3f7a3a'; ctx.fillRect(px,py,T,T);
+      ctx.fillStyle='#356b31'; ctx.beginPath(); ctx.arc(px+((x*13+y*7)%34)+6,py+((x*5+y*17)%34)+6,7,0,6.28); ctx.fill(); }
+    else if(m===WALK){ ctx.fillStyle='#5a636f'; ctx.fillRect(px,py,T,T); }
+  }
+  // buildings with fake height
+  for(const b of bInfo){
+    let vis=false;
+    for(const c of b.cells){ if(c[0]>=x0&&c[0]<=x1&&c[1]>=y0&&c[1]<=y1){ vis=true; break; } }
+    if(!vis) continue;
+    ctx.fillStyle='rgba(0,0,0,.35)';
+    for(const c of b.cells) ctx.fillRect(c[0]*T+5,c[1]*T+7,T,T);
+    ctx.fillStyle=b.col;
+    for(const c of b.cells) ctx.fillRect(c[0]*T,c[1]*T,T,T);
+    ctx.fillStyle=b.dark;
+    for(const c of b.cells) ctx.fillRect(c[0]*T,c[1]*T+T-6,T,6);
+    if(b.name && !isLandmark(Math.round(b.cx/T),Math.round(b.cy/T))){
+      ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillRect(b.cx-52,b.cy-11,104,22);
+      ctx.fillStyle='#ffe9a8'; ctx.font='13px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(b.name,b.cx,b.cy);
+    }
+  }
+  // landmark pillars
+  drawPillar(JC.x*T+T/2, JC.y*T+T/2, '#e8e0cc', 'जयस्तंभ');
+  drawPillar(GC.x*T+T/2, GC.y*T+T/2, '#d9c58a', 'घड़ी चौक');
+  // lake label
+  ctx.fillStyle='rgba(255,255,255,.75)'; ctx.font='bold 15px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('तेलिबंधा तालाब', LC.x*T, LC.y*T);
+  ctx.font='11px sans-serif'; ctx.fillText('Marine Drive', LC.x*T, (LC.y-LC.ry-1.6)*T);
+  // peds
+  for(const p of peds){ ctx.fillStyle=p.c; ctx.beginPath(); ctx.arc(p.x,p.y,5,0,6.28); ctx.fill();
+    ctx.fillStyle='#e8c39a'; ctx.beginPath(); ctx.arc(p.x,p.y-6,3,0,6.28); ctx.fill(); }
+  // traffic
+  for(const tv of traffic){
+    if(tv.dead>0){ ctx.save(); ctx.translate(tv.x,tv.y); ctx.rotate(Math.atan2(tv.dy,tv.dx));
+      ctx.globalAlpha=Math.max(.2,tv.dead/6); drawVehicle(tv); ctx.restore(); ctx.globalAlpha=1; continue; }
+    ctx.save(); ctx.translate(tv.x,tv.y); ctx.rotate(Math.atan2(tv.dy,tv.dx)); drawVehicle(tv); ctx.restore();
+  }
+  // cops
+  for(const cp of cops){
+    ctx.save(); ctx.translate(cp.x,cp.y); ctx.rotate(cp.a);
+    ctx.fillStyle='rgba(0,0,0,.35)'; roundRect(-19,-11,38,22,6); ctx.fill();
+    ctx.fillStyle='#f2f5f8'; roundRect(-19,-10,38,20,6); ctx.fill();
+    ctx.fillStyle='#2b4d8f'; ctx.fillRect(-19,-3,38,6);
+    ctx.fillStyle= (Math.floor(cp.siren)%2===0)?'#ff3030':'#3080ff';
+    ctx.fillRect(-4,-6,8,5);
+    ctx.restore();
+  }
+  // player car
+  ctx.save(); ctx.translate(car.x,car.y); ctx.rotate(car.a);
+  ctx.fillStyle='rgba(0,0,0,.4)'; roundRect(-20,-11,42,24,7); ctx.fill();
+  ctx.fillStyle='#e33e2b'; roundRect(-20,-10,40,20,7); ctx.fill();       // body
+  ctx.fillStyle='#b32418'; ctx.fillRect(-20,-10,9,20);                     // rear
+  ctx.fillStyle='#bfe6ff'; roundRect(2,-7,10,14,3); ctx.fill();            // windshield
+  ctx.fillStyle='#7a1610'; roundRect(-8,-8,10,16,3); ctx.fill();           // roof
+  ctx.fillStyle='#ffd86b'; ctx.fillRect(17,-8,4,4); ctx.fillRect(17,4,4,4);// headlights
+  ctx.fillStyle='#222'; ctx.fillRect(-14,-12,8,3); ctx.fillRect(8,-12,8,3);
+  ctx.fillRect(-14,9,8,3); ctx.fillRect(8,9,8,3);                          // wheels
+  ctx.restore();
+  ctx.restore();
+
+  // minimap
+  const ms=Math.min(150, VW*0.3), mx=VW-ms-12, my=Math.max(44, VH-ms-110);
+  ctx.globalAlpha=.85; ctx.drawImage(mini,mx,my,ms,ms);
+  ctx.globalAlpha=1; ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.strokeRect(mx,my,ms,ms);
+  const dot=(wx,wy,col,r)=>{ ctx.fillStyle=col; ctx.beginPath();
+    ctx.arc(mx+wx/PW*ms,my+wy/PH*ms,r,0,6.28); ctx.fill(); };
+  for(const cp of cops) dot(cp.x,cp.y,'#4aa3ff',2.5);
+  dot(LC.x*T,LC.y*T,'#6fb7ff',2);
+  dot(car.x,car.y,'#ff4b33',3.5);
+
+  // HUD text
+  const starEl=document.getElementById('stars');
+  starEl.textContent='★'.repeat(stars)+'☆'.repeat(5-stars);
+  starEl.style.color=stars>0?'#ffd54a':'rgba(255,255,255,.35)';
+  document.getElementById('dist').textContent='गेड़ी: '+(dist/1000).toFixed(2)+' km · टॉप: '+Math.round(topSpeed*0.28)+' km/h';
+  document.getElementById('speed').innerHTML='<b>'+Math.round(Math.abs(car.v)*0.28)+'</b> km/h';
+}
+function drawVehicle(tv){
+  ctx.fillStyle='rgba(0,0,0,.35)'; roundRect(-tv.l/2,-tv.w/2+1,tv.l,tv.w,5); ctx.fill();
+  ctx.fillStyle=tv.c1; roundRect(-tv.l/2,-tv.w/2,tv.l,tv.w,5); ctx.fill();
+  if(tv.n==='auto'){ ctx.fillStyle=tv.c2; ctx.fillRect(-tv.l/2,-tv.w/2,tv.l*.45,tv.w);
+    ctx.fillStyle='#123'; ctx.fillRect(2,-tv.w/2+3,4,tv.w-6); }
+  else { ctx.fillStyle='#bfe6ff'; ctx.fillRect(0,-tv.w/2+3,tv.l*.28,tv.w-6);
+    ctx.fillStyle=tv.c2; ctx.fillRect(-tv.l/2,-tv.w/2,5,tv.w); }
+}
+function drawPillar(x,y,col,label){
+  ctx.fillStyle='rgba(0,0,0,.3)'; ctx.beginPath(); ctx.arc(x+3,y+4,16,0,6.28); ctx.fill();
+  ctx.fillStyle=col; ctx.beginPath(); ctx.arc(x,y,16,0,6.28); ctx.fill();
+  ctx.fillStyle='#8a7a55'; ctx.beginPath(); ctx.arc(x,y,9,0,6.28); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(label,x,y-24);
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+/* ---------- Main loop ---------- */
+let last=performance.now(), started=false;
+function loop(now){
+  const dt=Math.min(.05,(now-last)/1000); last=now;
+  if(started){ update(dt); }
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+document.getElementById('startBtn').addEventListener('click',()=>{
+  document.getElementById('splash').style.display='none';
+  started=true; initAudio();
+  toast('गेड़ी मारो! Telibandha की ओर जाओ 🌊');
+});
+// allow Enter to start
+addEventListener('keydown',e=>{ if(!started && (e.key==='Enter'||e.key===' ')){ document.getElementById('startBtn').click(); } });
+</script>
+</body>
+</html>
