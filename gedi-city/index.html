@@ -451,10 +451,16 @@ function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w
 
 /* ---------- Demo autopilot (screenshot/testing: #demo) ---------- */
 const demo = location.hash.startsWith('#demo');
-const route=[[30.5,22.5],[26.5,22.5],[25.4,19.8],[22,18.9],[18.6,19.8],[18.2,22.5],[19.4,25.2],[22,26.1],[24.6,25.2],[26.5,22.5],[14,22.5],[14,26.4],[17.4,30],[14,33.6],[14,38.5],[30.5,38.5],[44,38.5],[48,40.4],[53.6,44],[52.5,50.5],[48,53.6],[42.5,51],[40.6,45.5]];
+const route=[[30.5,14.5],[14,14.5],[14,26.3],[14,27.2],[16,28],[16.8,30],[16,32],[14,32.8],[14,38.5],[44,38.5],[48,40.1],[54.5,42],[57.8,47],[54.5,52],[48,53.5],[41.5,52],[38.5,47]];
+let stuckT=0, revT=0;
 let wpIdx=0;
+let lastT=0;
 function demoInput(){
   if(wpIdx>=route.length) return {th:0,st:0};
+  const now=performance.now(), dt=Math.min(.1,(now-lastT)/1000)||.016; lastT=now;
+  if(revT>0){ revT-=dt; return {th:-1,st:0}; }
+  if(Math.abs(car.v)<12) stuckT+=dt; else stuckT=0;
+  if(stuckT>2){ stuckT=0; revT=1.1; return {th:-1,st:0}; }
   const [wx,wy]=route[wpIdx], tx=wx*T, ty=wy*T;
   const d=Math.hypot(tx-car.x,ty-car.y);
   if(d<T*1.2){ wpIdx++; return {th:0,st:0}; }
