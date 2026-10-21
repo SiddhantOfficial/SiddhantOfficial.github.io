@@ -451,7 +451,7 @@ function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w
 
 /* ---------- Demo autopilot (screenshot/testing: #demo) ---------- */
 const demo = location.hash.startsWith('#demo');
-const route=[[30.5,22.5],[22,22.5],[14,22.5],[14,30.5],[14,38.5],[30.5,38.5],[46,38.5],[48,47]];
+const route=[[30.5,22.5],[26.5,22.5],[25.4,19.8],[22,18.9],[18.6,19.8],[18.2,22.5],[19.4,25.2],[22,26.1],[24.6,25.2],[26.5,22.5],[14,22.5],[14,26.4],[17.4,30],[14,33.6],[14,38.5],[30.5,38.5],[44,38.5],[48,40.4],[53.6,44],[52.5,50.5],[48,53.6],[42.5,51],[40.6,45.5]];
 let wpIdx=0;
 function demoInput(){
   if(wpIdx>=route.length) return {th:0,st:0};
